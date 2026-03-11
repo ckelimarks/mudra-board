@@ -310,24 +310,41 @@ function handleGestures() {
   }
 
   // SPEECH MODE: Pinch marks location, speech gets placed there on release
+  // BUT: if pinching over existing text, drag it instead
   if (speech.active) {
-    if (isPinching && !wasPinching) {
-      // Pinch started - mark this position for text placement
+    // Check if we're over existing text
+    const hoveredText = svgRenderer.getTextElementAt(pinchPoint.x, pinchPoint.y);
+
+    if (hoveredText && isPinching) {
+      // Text dragging takes priority in speech mode too
+      if (!wasPinching) {
+        interactionEngine.handlePinchStart(pinchPoint, svgRenderer, false); // false = no new drawing
+      } else {
+        interactionEngine.handlePinchMove(pinchPoint, svgRenderer, currentColor, currentSize);
+      }
+      speechPinchActive = false; // Don't place speech when dragging text
+    } else if (!hoveredText && isPinching && !wasPinching) {
+      // Not over text - start speech placement
       pendingTextPosition = { x: pinchPoint.x, y: pinchPoint.y };
       speechPinchActive = true;
       speechPinchStartTime = Date.now();
-      // DON'T clear accumulator - keep any text that was already recognized
     } else if (isPinching && wasPinching && speechPinchActive) {
       // While holding pinch - update position to current location
       pendingTextPosition = { x: pinchPoint.x, y: pinchPoint.y };
-    } else if (!isPinching && wasPinching && speechPinchActive) {
-      // Pinch released - place whatever text was captured
-      if (speechAccumulator.length > 0 && pendingTextPosition) {
-        svgRenderer.createText(speechAccumulator, pendingTextPosition.x, pendingTextPosition.y, currentColor, Math.max(currentSize * 4, 24));
-        transcript.addEntry(speechAccumulator, pendingTextPosition.x, pendingTextPosition.y);
-        speechAccumulator = ''; // Clear placed text
-        ignoreNextSpeech = true; // Ignore stale speech updates
-        setTimeout(() => { ignoreNextSpeech = false; }, 1000); // Reset after 1 second
+    } else if (!isPinching && wasPinching) {
+      // Pinch released
+      if (interactionEngine.state === 'DRAGGING') {
+        // Was dragging text - end the drag
+        interactionEngine.handlePinchEnd(svgRenderer, currentColor, currentSize);
+      } else if (speechPinchActive) {
+        // Was placing speech - place it
+        if (speechAccumulator.length > 0 && pendingTextPosition) {
+          svgRenderer.createText(speechAccumulator, pendingTextPosition.x, pendingTextPosition.y, currentColor, Math.max(currentSize * 4, 24));
+          transcript.addEntry(speechAccumulator, pendingTextPosition.x, pendingTextPosition.y);
+          speechAccumulator = ''; // Clear placed text
+          ignoreNextSpeech = true; // Ignore stale speech updates
+          setTimeout(() => { ignoreNextSpeech = false; }, 1000); // Reset after 1 second
+        }
       }
       pendingTextPosition = null;
       speechPinchActive = false;
