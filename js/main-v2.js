@@ -333,20 +333,16 @@ function handleGestures() {
       speechPinchActive = false;
     }
   } else {
-    // DRAW MODE: Only enabled if pencil mode is ON
+    // DRAW MODE: Always handle pinch (for text dragging), but only draw if pencil ON
     speechPinchActive = false;
 
-    if (pencilMode) {
-      // Pencil mode ON: pinch to draw (prevents accidental scribbles)
-      if (isPinching && !wasPinching) {
-        interactionEngine.handlePinchStart(pinchPoint, svgRenderer);
-      } else if (isPinching && wasPinching) {
-        interactionEngine.handlePinchMove(pinchPoint, svgRenderer, currentColor, currentSize);
-      } else if (!isPinching && wasPinching) {
-        interactionEngine.handlePinchEnd(svgRenderer, currentColor, currentSize);
-      }
+    if (isPinching && !wasPinching) {
+      interactionEngine.handlePinchStart(pinchPoint, svgRenderer, pencilMode);
+    } else if (isPinching && wasPinching) {
+      interactionEngine.handlePinchMove(pinchPoint, svgRenderer, currentColor, currentSize);
+    } else if (!isPinching && wasPinching) {
+      interactionEngine.handlePinchEnd(svgRenderer, currentColor, currentSize);
     }
-    // If pencil mode OFF: no drawing at all
   }
 
   /* TOOL SYSTEM - Commented out for now

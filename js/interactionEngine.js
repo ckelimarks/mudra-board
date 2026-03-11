@@ -155,12 +155,12 @@ export class InteractionEngine {
     };
   }
 
-  handlePinchStart(pinchPoint, svgRenderer) {
+  handlePinchStart(pinchPoint, svgRenderer, pencilMode = true) {
     // Check if we're over a text element at the PINCH POINT (between thumb and index)
     const hoveredText = svgRenderer.getTextElementAt(pinchPoint.x, pinchPoint.y);
 
     if (hoveredText) {
-      // Start dragging existing text
+      // Start dragging existing text (always allowed)
       this.state = 'DRAGGING';
       this.grabbedElement = hoveredText;
 
@@ -172,8 +172,8 @@ export class InteractionEngine {
       };
       hoveredText.setAttribute('cursor', 'grabbing');
       console.log('📌 Grabbed text:', hoveredText.textContent, 'offset:', this.grabOffset);
-    } else {
-      // Start drawing
+    } else if (pencilMode) {
+      // Start drawing (only if pencil mode enabled)
       this.state = 'DRAWING';
       this.currentPoints = [pinchPoint];
     }
