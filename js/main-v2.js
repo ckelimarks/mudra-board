@@ -4,6 +4,7 @@ import { Transcript } from './transcript.js';
 import { SpeechController } from './speech-v2.js';
 import { TapZones } from './tapZones.js';
 import { RotationGesture } from './rotationGesture.js';
+import { PanGesture } from './panGesture.js';
 // TOOL SYSTEM - Commented out for now, can re-enable later
 // import { ToolManager, createDefaultTools } from './tools.js';
 
@@ -13,6 +14,12 @@ let currentSize = 5;
 let allHandLandmarks = []; // Array of all detected hands
 let wasPinching = false;
 let speechAccumulator = ''; // Accumulate speech while pinching
+let lastInteractionResult = null; // Cache interaction result to avoid double-computing
+let pendingTextPosition = null; // Queue position when pinch starts, place text when speech arrives
+let speechPinchActive = false; // Track if we're in a speech-pinch (marking location)
+
+// ── Audio ──────────────────────────────────────────────────────────────────
+const speechToggleSound = new Audio('audio/speech-togglefx.mp3');
 
 // ── DOM ────────────────────────────────────────────────────────────────────
 const videoEl = document.getElementById('inputVideo');
@@ -31,6 +38,7 @@ const interactionEngine = new InteractionEngine(svgRenderer);
 const transcript = new Transcript();
 const tapZones = new TapZones(window.innerWidth, window.innerHeight);
 const rotationGesture = new RotationGesture();
+const panGesture = new PanGesture();
 // TOOL SYSTEM - Commented out for now
 // const toolManager = new ToolManager();
 
@@ -42,6 +50,11 @@ function resize() {
   svgOverlay.setAttribute('height', window.innerHeight);
   svgOverlay.setAttribute('viewBox', `0 0 ${window.innerWidth} ${window.innerHeight}`);
   tapZones.updateSize(window.innerWidth, window.innerHeight);
+
+  // Initialize rotation center (important for coordinate transforms)
+  const centerX = canvas.width / 2;
+  const centerY = canvas.height / 2;
+  svgRenderer.setRotation(rotationGesture.currentRotation, centerX, centerY);
 
   // TOOL SYSTEM - Commented out for now
   // if (toolManager.tools.length === 0) {
@@ -71,33 +84,25 @@ function renderFrame() {
   // DEBUG - Commented out (green rectangles around text)
   // drawTextHitBoxes(ctx);
 
-  // 3. Draw cursor and preview stroke
-  const primaryHand = allHandLandmarks[0];
-  if (primaryHand) {
-    const result = interactionEngine.update(
-      primaryHand,
-      canvas.width,
-      canvas.height,
-      speech.active
-    );
+  // 3. Draw cursor and preview stroke (use cached result from handleGestures)
+  if (lastInteractionResult && lastInteractionResult.position) {
+    const result = lastInteractionResult;
 
-    if (result.position) {
-      // Calculate pinch point for visual feedback
-      let pinchPoint = result.position;
-      if (result.thumbPos && result.isPinching) {
-        pinchPoint = {
-          x: (result.thumbPos.x + result.position.x) / 2,
-          y: (result.thumbPos.y + result.position.y) / 2,
-        };
-      }
+    // Calculate pinch point for visual feedback
+    let pinchPoint = result.position;
+    if (result.thumbPos && result.isPinching) {
+      pinchPoint = {
+        x: (result.thumbPos.x + result.position.x) / 2,
+        y: (result.thumbPos.y + result.position.y) / 2,
+      };
+    }
 
-      // Draw cursor (different for pinch vs idle)
-      drawCursor(ctx, result.position, result.thumbPos, result.isPinching, pinchPoint);
+    // Draw cursor (different for pinch vs idle)
+    drawCursor(ctx, result.position, result.thumbPos, result.isPinching, pinchPoint);
 
-      // Preview current stroke if drawing
-      if (interactionEngine.state === 'DRAWING') {
-        drawPreviewStroke(ctx, interactionEngine.getCurrentPoints());
-      }
+    // Preview current stroke if drawing
+    if (interactionEngine.state === 'DRAWING') {
+      drawPreviewStroke(ctx, interactionEngine.getCurrentPoints());
     }
   }
 
@@ -225,32 +230,55 @@ function drawPreviewStroke(ctx, points) {
 let lastPosition = null;
 
 function handleGestures() {
+  const centerX = canvas.width / 2;
+  const centerY = canvas.height / 2;
+
+  // Priority 1: Two-hand pan gesture (both hands pinching)
+  const pan = panGesture.update(allHandLandmarks, canvas.width, canvas.height);
+  if (pan.panning) {
+    // Apply pan + current rotation
+    svgRenderer.setTransform(
+      pan.panX,
+      pan.panY,
+      rotationGesture.currentRotation,
+      centerX,
+      centerY
+    );
+    wasPinching = false; // Don't trigger single-hand gestures
+    return;
+  }
+
+  // Always keep pan applied even when not actively panning
+  svgRenderer.setPan(pan.panX, pan.panY);
+
   // Handle primary hand interactions
   const primaryHand = allHandLandmarks[0];
   if (!primaryHand) {
     wasPinching = false;
+    lastInteractionResult = null;
     return;
   }
 
-  // Check for rotation gesture (open palm rotates canvas)
+  // Priority 2: Rotation gesture (open palm rotates canvas)
   const rotation = rotationGesture.update(primaryHand);
 
   // Always apply rotation to SVG groups (persistent even when hand closes)
-  const centerX = canvas.width / 2;
-  const centerY = canvas.height / 2;
   svgRenderer.setRotation(rotation.angle, centerX, centerY);
 
   // If actively rotating, don't do other gestures
   if (rotation.rotating) {
+    lastInteractionResult = null;
     return;
   }
 
+  // Compute interaction state ONCE per cycle (cached for renderFrame to use)
   const result = interactionEngine.update(
     primaryHand,
     canvas.width,
     canvas.height,
     speech.active
   );
+  lastInteractionResult = result;
 
   // Check for tap zone activation (using index finger position)
   if (result.position) {
@@ -275,37 +303,39 @@ function handleGestures() {
     };
   }
 
-  // Speech mode: text follows finger and accumulates
-  const isSpeaking = speech.active && speechAccumulator.length > 0;
-
-  if (isSpeaking) {
-    // Actively speaking - show live text
-    if (!interactionEngine.liveTextElement) {
-      interactionEngine.startLiveText(result.position, svgRenderer, currentColor, Math.max(currentSize * 4, 24));
-    }
-    interactionEngine.updateLiveText(speechAccumulator, result.position, svgRenderer);
-
-    // Finalize text on pinch
+  // SPEECH MODE: Pinch marks location, speech gets placed there on release
+  if (speech.active) {
     if (isPinching && !wasPinching) {
-      transcript.addEntry(speechAccumulator, result.position.x, result.position.y);
-      interactionEngine.finalizeLiveText();
+      // Pinch started - mark this position for text placement
+      pendingTextPosition = { x: pinchPoint.x, y: pinchPoint.y };
+      speechPinchActive = true;
+      // Clear any old accumulated text when starting new pinch
       speechAccumulator = '';
-      speechPreview.classList.add('hidden');
+    } else if (!isPinching && wasPinching && speechPinchActive) {
+      // Pinch released - place whatever text was captured during the pinch
+      if (speechAccumulator.length > 0 && pendingTextPosition) {
+        svgRenderer.createText(speechAccumulator, pendingTextPosition.x, pendingTextPosition.y, currentColor, Math.max(currentSize * 4, 24));
+        transcript.addEntry(speechAccumulator, pendingTextPosition.x, pendingTextPosition.y);
+      }
+      speechAccumulator = '';
+      pendingTextPosition = null;
+      speechPinchActive = false;
     }
+    // While pinching, speech accumulates but isn't placed yet
   } else {
-    // Not speaking (or speech is off) - simple pinch to draw/drag
+    // DRAW MODE: Pinch handles draw/drag
+    speechPinchActive = false;
+
     if (isPinching && !wasPinching) {
-      // Pinch started - check if over text, else draw
       interactionEngine.handlePinchStart(pinchPoint, svgRenderer);
     } else if (isPinching && wasPinching) {
-      // Pinch held - continue drawing or dragging
-      interactionEngine.handlePinchMove(pinchPoint, svgRenderer);
+      interactionEngine.handlePinchMove(pinchPoint, svgRenderer, currentColor, currentSize);
     } else if (!isPinching && wasPinching) {
-      // Pinch released
       interactionEngine.handlePinchEnd(svgRenderer, currentColor, currentSize);
     }
+  }
 
-    /* TOOL SYSTEM - Commented out for now
+  /* TOOL SYSTEM - Commented out for now
     if (isPinching && !wasPinching) {
       const toolAtPoint = toolManager.getToolAt(pinchPoint.x, pinchPoint.y);
       if (toolAtPoint) {
@@ -338,7 +368,6 @@ function handleGestures() {
       }
     }
     */
-  }
 
   wasPinching = isPinching;
 }
@@ -381,18 +410,14 @@ function initHandTracking() {
 // ── Speech Controller ──────────────────────────────────────────────────────
 const speech = new SpeechController({
   onInterim: (text) => {
-    // Just show the interim text directly - simpler, no duplication
+    // Accumulate text - SVG live text handles the display
     speechAccumulator = text;
-    speechPreview.textContent = text;
-    speechPreview.classList.remove('hidden');
-    if (lastPosition) {
-      speechPreview.style.left = `${lastPosition.x}px`;
-      speechPreview.style.top = `${lastPosition.y - 40}px`;
-    }
+    // Keep HTML preview hidden - using SVG text instead
+    speechPreview.classList.add('hidden');
   },
   onFinal: (text) => {
-    // Do nothing - interim already has the text
-    // This prevents duplication
+    // Accumulate final text too
+    if (text) speechAccumulator = text;
   },
   onCommand: (cmd) => {
     speechPreview.classList.add('hidden');
@@ -497,12 +522,26 @@ document.getElementById('undoBtn')
 function toggleSpeech() {
   const isNowOn = speech.toggle();
   const speechToggleBtn = document.getElementById('speechToggle');
-  speechToggleBtn.textContent = `🎤 Speech: ${isNowOn ? 'ON' : 'OFF'}`;
+  const icon = speechToggleBtn.querySelector('i');
+
+  // Update icon
+  if (icon) {
+    icon.setAttribute('data-lucide', isNowOn ? 'mic' : 'mic-off');
+    lucide.createIcons({ icons: { 'mic': lucide.icons.mic, 'mic-off': lucide.icons['mic-off'] } });
+  }
+
+  // Toggle active state
+  speechToggleBtn.classList.toggle('active', isNowOn);
   document.getElementById('speechIndicator').classList.toggle('hidden', !isNowOn);
+
+  // Play toggle sound
+  speechToggleSound.currentTime = 0;
+  speechToggleSound.play().catch(() => {});
 
   if (!isNowOn) {
     speechAccumulator = '';
-    speechPreview.classList.add('hidden');
+    pendingTextPosition = null;
+    speechPinchActive = false;
     interactionEngine.cancelLiveText(svgRenderer);
   }
 }
@@ -531,10 +570,15 @@ function downloadFile(filename, content, mimeType) {
   URL.revokeObjectURL(url);
 }
 
-// ── Instructions Dismiss ───────────────────────────────────────────────────
+// ── Instructions Toggle ────────────────────────────────────────────────────
+document.getElementById('helpBtn')
+  ?.addEventListener('click', () => {
+    instructions.classList.toggle('hidden');
+  });
+
 document.getElementById('dismissInstructions')
   ?.addEventListener('click', () => {
-    instructions.style.display = 'none';
+    instructions.classList.add('hidden');
   });
 
 // ── Keyboard Shortcuts ─────────────────────────────────────────────────────
@@ -552,7 +596,7 @@ document.addEventListener('keydown', (e) => {
       svgRenderer.removeElement(strokes[strokes.length - 1]);
     }
   }
-  if (e.key === 'Escape') instructions.style.display = 'none';
+  if (e.key === 'Escape') instructions.classList.add('hidden');
 });
 
 // ── Boot ───────────────────────────────────────────────────────────────────

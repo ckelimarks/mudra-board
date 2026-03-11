@@ -3,8 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Invisible Whiteboard v2</title>
+  <title>Invisible Whiteboard</title>
   <link rel="stylesheet" href="style.css">
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 
   <!-- MediaPipe via CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -25,6 +28,92 @@
     #svgOverlay text {
       pointer-events: all;
     }
+
+    #toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(10px);
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    #toolbar button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 6px;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    #toolbar button:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    #toolbar button.active {
+      background: rgba(239, 68, 68, 0.3);
+      border-color: rgba(239, 68, 68, 0.5);
+    }
+
+    #toolbar button i {
+      width: 16px;
+      height: 16px;
+    }
+
+    #toolbar input[type="color"] {
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    #toolbar input[type="range"] {
+      width: 80px;
+      accent-color: #fff;
+    }
+
+    #speechIndicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      background: rgba(239, 68, 68, 0.2);
+      border-radius: 6px;
+      color: #ef4444;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    #speechIndicator .pulse {
+      width: 8px;
+      height: 8px;
+      background: #ef4444;
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.2); }
+    }
+
+    .divider {
+      width: 1px;
+      height: 24px;
+      background: rgba(255, 255, 255, 0.2);
+    }
   </style>
 </head>
 <body>
@@ -41,36 +130,56 @@
   <div id="toolbar">
     <input type="color" id="colorPicker" value="#FF0000" title="Color">
     <input type="range" id="brushSize" min="2" max="20" value="5" title="Size">
-    <button id="undoBtn">↩ Undo</button>
-    <button id="clearBtn">🗑 Clear</button>
-    <button id="speechToggle">🎤 Speech: OFF</button>
-    <button id="exportSVG">💾 SVG</button>
-    <button id="exportTranscript">📄 Transcript</button>
-    <span id="speechIndicator" class="indicator hidden">🔴 Listening</span>
+    <div class="divider"></div>
+    <button id="undoBtn"><i data-lucide="undo-2"></i></button>
+    <button id="clearBtn"><i data-lucide="trash-2"></i></button>
+    <div class="divider"></div>
+    <button id="speechToggle"><i data-lucide="mic-off"></i><span>Speech</span></button>
+    <div class="divider"></div>
+    <button id="exportSVG"><i data-lucide="download"></i></button>
+    <button id="helpBtn"><i data-lucide="help-circle"></i></button>
+    <span id="speechIndicator" class="hidden"><span class="pulse"></span>Listening</span>
   </div>
-
-  <!-- Gesture status removed - using tap zones instead -->
 
   <!-- Interim speech preview -->
   <div id="speechPreview" class="hidden"></div>
 
   <!-- Loading overlay -->
-  <div id="loadingOverlay">Loading hand tracking...</div>
+  <div id="loadingOverlay">
+    <div class="loader"></div>
+    <span>Initializing hand tracking...</span>
+  </div>
 
-  <!-- Instructions overlay (can be dismissed) -->
-  <div id="instructions">
-    <h2>Invisible Whiteboard v2</h2>
-    <p><strong>Draw:</strong> Pinch thumb + index finger together, move hand</p>
-    <p><strong>Drag text:</strong> Pinch over text, move, release</p>
-    <p><strong>Toggle speech:</strong> Show open palm with your other hand 🖐️</p>
-    <p><strong>Place text:</strong> While speech is on, pinch to place text at position</p>
-    <p><strong>Voice commands:</strong> "clear", "undo"</p>
-    <hr>
-    <p><strong>Export:</strong> Click 💾 SVG to download image, 📄 Transcript for speech log</p>
-    <p><strong>For Zoom:</strong> Share Screen → Browser Tab → Select this tab</p>
-    <button id="dismissInstructions">Got it</button>
+  <!-- Instructions overlay -->
+  <div id="instructions" class="hidden">
+    <div class="instructions-content">
+      <h2>Controls</h2>
+      <div class="instruction-grid">
+        <div class="instruction">
+          <span class="key">Pinch</span>
+          <span class="desc">Draw or speak-to-place text</span>
+        </div>
+        <div class="instruction">
+          <span class="key">Pinch + Drag</span>
+          <span class="desc">Move existing text</span>
+        </div>
+        <div class="instruction">
+          <span class="key">Open Palm</span>
+          <span class="desc">Rotate canvas</span>
+        </div>
+        <div class="instruction">
+          <span class="key">Two Hands</span>
+          <span class="desc">Pan canvas</span>
+        </div>
+      </div>
+      <button id="dismissInstructions">Got it</button>
+    </div>
   </div>
 
   <script type="module" src="js/main-v2.js"></script>
+  <script>
+    // Initialize Lucide icons
+    lucide.createIcons();
+  </script>
 </body>
 </html>

@@ -2,10 +2,16 @@
 const LM = {
   WRIST: 0,
   THUMB_TIP: 4,
+  THUMB_IP: 3,
   INDEX_TIP: 8,
   INDEX_PIP: 6,
+  INDEX_MCP: 5,
   MIDDLE_TIP: 12,
   MIDDLE_PIP: 10,
+  RING_TIP: 16,
+  RING_PIP: 14,
+  PINKY_TIP: 20,
+  PINKY_PIP: 18,
 };
 
 export class InteractionEngine {
@@ -13,17 +19,72 @@ export class InteractionEngine {
     this.svgRenderer = svgRenderer;
     this.state = 'IDLE';  // 'IDLE' | 'DRAWING' | 'DRAGGING' | 'TEXT_PLACING'
     this.positionBuffer = [];
-    this.BUFFER_SIZE = 6;
+    this.BUFFER_SIZE = 3; // Reduced for faster tracking response
 
     // Current interaction state
     this.currentPoints = [];
     this.grabbedElement = null;
     this.grabOffset = { x: 0, y: 0 };
     this.liveTextElement = null;
+
+    // Stroke segmentation settings
+    this.MAX_POINTS_PER_SEGMENT = 80; // Commit stroke segment after this many points
+    this.currentColor = '#FF0000';
+    this.currentWidth = 5;
+
+    // Pinch hysteresis - prevent false releases during occlusion
+    this.pinchGraceFrames = 0;
+    this.PINCH_GRACE_PERIOD = 5; // Frames to wait before considering pinch released (~165ms)
+    this.lastValidPinchPoint = null;
+    this.wasPinchingInternal = false;
+
+    // Gun gesture state (for placing text)
+    this.wasGunPointing = false;
+  }
+
+  // Detect "finger gun" gesture - index pointing, thumb up, other fingers curled
+  isGunGesture(landmarks) {
+    if (!landmarks || landmarks.length === 0) return false;
+
+    const lm = landmarks;
+
+    // Index finger must be extended (tip above PIP)
+    const indexExtended = lm[LM.INDEX_TIP].y < lm[LM.INDEX_PIP].y;
+
+    // Thumb should be extended (tip away from index MCP)
+    const thumbExtended = lm[LM.THUMB_TIP].y < lm[LM.THUMB_IP].y;
+
+    // Middle, ring, pinky should be curled (tips below PIPs)
+    const middleCurled = lm[LM.MIDDLE_TIP].y > lm[LM.MIDDLE_PIP].y;
+    const ringCurled = lm[LM.RING_TIP].y > lm[LM.RING_PIP].y;
+    const pinkyCurled = lm[LM.PINKY_TIP].y > lm[LM.PINKY_PIP].y;
+
+    // Thumb and index should NOT be close together (not pinching)
+    const thumbX = lm[LM.THUMB_TIP].x;
+    const thumbY = lm[LM.THUMB_TIP].y;
+    const indexX = lm[LM.INDEX_TIP].x;
+    const indexY = lm[LM.INDEX_TIP].y;
+    const distance = Math.hypot(thumbX - indexX, thumbY - indexY);
+    const notPinching = distance > 0.08; // Normalized distance
+
+    return indexExtended && thumbExtended && middleCurled && ringCurled && pinkyCurled && notPinching;
   }
 
   update(landmarks, canvasWidth, canvasHeight, speechActive) {
     if (!landmarks || landmarks.length === 0) {
+      // No hand detected - use grace period if was pinching
+      if (this.wasPinchingInternal && this.pinchGraceFrames < this.PINCH_GRACE_PERIOD) {
+        this.pinchGraceFrames++;
+        return {
+          state: this.state,
+          position: this.lastValidPinchPoint,
+          isPinching: true, // Maintain pinch during grace period
+          thumbPos: null,
+          indexPos: null,
+        };
+      }
+      this.wasPinchingInternal = false;
+      this.pinchGraceFrames = 0;
       return { state: 'IDLE', position: null, isPinching: false };
     }
 
@@ -51,12 +112,40 @@ export class InteractionEngine {
 
     // Detect pinch gesture (thumb + index close together)
     const pinchDistance = Math.hypot(thumbPos.x - indexPos.x, thumbPos.y - indexPos.y);
-    const isPinching = pinchDistance < 40; // threshold in pixels
+    const rawPinching = pinchDistance < 40; // threshold in pixels
+
+    // Apply pinch hysteresis
+    let isPinching = rawPinching;
+
+    if (rawPinching) {
+      // Currently pinching - reset grace period
+      this.pinchGraceFrames = 0;
+      this.wasPinchingInternal = true;
+      this.lastValidPinchPoint = smoothedPos;
+    } else if (this.wasPinchingInternal) {
+      // Was pinching but now not detected - use grace period
+      if (this.pinchGraceFrames < this.PINCH_GRACE_PERIOD) {
+        this.pinchGraceFrames++;
+        isPinching = true; // Maintain pinch during grace period
+        // Keep using last valid position during occlusion
+      } else {
+        // Grace period expired - actually release
+        this.wasPinchingInternal = false;
+        this.pinchGraceFrames = 0;
+      }
+    }
+
+    // Detect gun gesture (for placing text)
+    const isGunPointing = this.isGunGesture(landmarks);
+    const gunJustFired = isGunPointing && !this.wasGunPointing;
+    this.wasGunPointing = isGunPointing;
 
     return {
       state: this.state,
       position: smoothedPos,
       isPinching,
+      isGunPointing,
+      gunJustFired, // True only on the frame the gun gesture is first detected
       thumbPos,
       indexPos,
     };
@@ -70,12 +159,15 @@ export class InteractionEngine {
       // Start dragging existing text
       this.state = 'DRAGGING';
       this.grabbedElement = hoveredText;
+
+      // Calculate grab offset in WORLD coordinates
+      const worldPinch = svgRenderer.screenToWorld(pinchPoint.x, pinchPoint.y);
       this.grabOffset = {
-        x: pinchPoint.x - parseFloat(hoveredText.getAttribute('x')),
-        y: pinchPoint.y - parseFloat(hoveredText.getAttribute('y')),
+        x: worldPinch.x - parseFloat(hoveredText.getAttribute('x')),
+        y: worldPinch.y - parseFloat(hoveredText.getAttribute('y')),
       };
       hoveredText.setAttribute('cursor', 'grabbing');
-      console.log('📌 Grabbed text:', hoveredText.textContent);
+      console.log('📌 Grabbed text:', hoveredText.textContent, 'offset:', this.grabOffset);
     } else {
       // Start drawing
       this.state = 'DRAWING';
@@ -83,19 +175,34 @@ export class InteractionEngine {
     }
   }
 
-  handlePinchMove(pinchPoint, svgRenderer) {
+  handlePinchMove(pinchPoint, svgRenderer, color, width) {
     if (this.state === 'DRAWING') {
+      // Store current style for segmentation
+      if (color) this.currentColor = color;
+      if (width) this.currentWidth = width;
+
       // Add point to current stroke
       const last = this.currentPoints[this.currentPoints.length - 1];
       const dist = Math.hypot(pinchPoint.x - last.x, pinchPoint.y - last.y);
       if (dist > 4) {
         this.currentPoints.push(pinchPoint);
+
+        // Segment long strokes to prevent glitches
+        if (this.currentPoints.length >= this.MAX_POINTS_PER_SEGMENT) {
+          // Commit current segment
+          svgRenderer.createPath(this.currentPoints, this.currentColor, this.currentWidth);
+          // Start new segment from last point (for continuity)
+          this.currentPoints = [pinchPoint];
+        }
       }
     } else if (this.state === 'DRAGGING' && this.grabbedElement) {
-      // Update text position using pinch point
-      const newX = pinchPoint.x - this.grabOffset.x;
-      const newY = pinchPoint.y - this.grabOffset.y;
-      svgRenderer.updateTextPosition(this.grabbedElement, newX, newY);
+      // Convert screen pinch point to world coordinates
+      const worldPinch = svgRenderer.screenToWorld(pinchPoint.x, pinchPoint.y);
+      // Calculate new world position
+      const newX = worldPinch.x - this.grabOffset.x;
+      const newY = worldPinch.y - this.grabOffset.y;
+      // Update directly in world coordinates
+      svgRenderer.updateTextPositionWorld(this.grabbedElement, newX, newY);
     }
   }
 

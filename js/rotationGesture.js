@@ -91,6 +91,9 @@ export class RotationGesture {
       // Mirror the rotation (negate delta) to match hand movement
       deltaAngle = -deltaAngle;
 
+      // Apply 2x multiplier for faster rotation
+      deltaAngle *= 2;
+
       // New rotation = rotation when grabbed + delta
       const newRotation = this.rotationAtGrab + deltaAngle;
 
