@@ -17,6 +17,9 @@ let speechAccumulator = ''; // Accumulate speech while pinching
 let lastInteractionResult = null; // Cache interaction result to avoid double-computing
 let pendingTextPosition = null; // Queue position when pinch starts, place text when speech arrives
 let speechPinchActive = false; // Track if we're in a speech-pinch (marking location)
+let speechPinchStartTime = 0; // When the speech pinch started
+let ignoreNextSpeech = false; // Flag to ignore speech updates after placing text
+let pencilMode = false; // Toggle for pencil tool
 
 // ── Audio ──────────────────────────────────────────────────────────────────
 const speechToggleSound = new Audio('audio/speech-togglefx.mp3');
@@ -286,6 +289,9 @@ function handleGestures() {
     if (tapResult.command === 'TOGGLE_SPEECH') {
       toggleSpeech();
       showCommandFeedback('SPEECH ' + (speech.active ? 'ON' : 'OFF'));
+    } else if (tapResult.command === 'TOGGLE_PENCIL') {
+      togglePencil();
+      showCommandFeedback('PENCIL ' + (pencilMode ? 'ON' : 'OFF'));
     }
   }
 
@@ -309,30 +315,38 @@ function handleGestures() {
       // Pinch started - mark this position for text placement
       pendingTextPosition = { x: pinchPoint.x, y: pinchPoint.y };
       speechPinchActive = true;
-      // Clear any old accumulated text when starting new pinch
-      speechAccumulator = '';
+      speechPinchStartTime = Date.now();
+      // DON'T clear accumulator - keep any text that was already recognized
+    } else if (isPinching && wasPinching && speechPinchActive) {
+      // While holding pinch - update position to current location
+      pendingTextPosition = { x: pinchPoint.x, y: pinchPoint.y };
     } else if (!isPinching && wasPinching && speechPinchActive) {
-      // Pinch released - place whatever text was captured during the pinch
+      // Pinch released - place whatever text was captured
       if (speechAccumulator.length > 0 && pendingTextPosition) {
         svgRenderer.createText(speechAccumulator, pendingTextPosition.x, pendingTextPosition.y, currentColor, Math.max(currentSize * 4, 24));
         transcript.addEntry(speechAccumulator, pendingTextPosition.x, pendingTextPosition.y);
+        speechAccumulator = ''; // Clear placed text
+        ignoreNextSpeech = true; // Ignore stale speech updates
+        setTimeout(() => { ignoreNextSpeech = false; }, 1000); // Reset after 1 second
       }
-      speechAccumulator = '';
       pendingTextPosition = null;
       speechPinchActive = false;
     }
-    // While pinching, speech accumulates but isn't placed yet
   } else {
-    // DRAW MODE: Pinch handles draw/drag
+    // DRAW MODE: Only enabled if pencil mode is ON
     speechPinchActive = false;
 
-    if (isPinching && !wasPinching) {
-      interactionEngine.handlePinchStart(pinchPoint, svgRenderer);
-    } else if (isPinching && wasPinching) {
-      interactionEngine.handlePinchMove(pinchPoint, svgRenderer, currentColor, currentSize);
-    } else if (!isPinching && wasPinching) {
-      interactionEngine.handlePinchEnd(svgRenderer, currentColor, currentSize);
+    if (pencilMode) {
+      // Pencil mode ON: pinch to draw (prevents accidental scribbles)
+      if (isPinching && !wasPinching) {
+        interactionEngine.handlePinchStart(pinchPoint, svgRenderer);
+      } else if (isPinching && wasPinching) {
+        interactionEngine.handlePinchMove(pinchPoint, svgRenderer, currentColor, currentSize);
+      } else if (!isPinching && wasPinching) {
+        interactionEngine.handlePinchEnd(svgRenderer, currentColor, currentSize);
+      }
     }
+    // If pencil mode OFF: no drawing at all
   }
 
   /* TOOL SYSTEM - Commented out for now
@@ -410,14 +424,16 @@ function initHandTracking() {
 // ── Speech Controller ──────────────────────────────────────────────────────
 const speech = new SpeechController({
   onInterim: (text) => {
-    // Accumulate text - SVG live text handles the display
-    speechAccumulator = text;
-    // Keep HTML preview hidden - using SVG text instead
-    speechPreview.classList.add('hidden');
+    // Always update with latest interim - this is the live recognition
+    if (text && text.length > 0 && !ignoreNextSpeech) {
+      speechAccumulator = text;
+    }
   },
   onFinal: (text) => {
-    // Accumulate final text too
-    if (text) speechAccumulator = text;
+    // Final result is more accurate - prefer it over interim
+    if (text && text.length > 0 && !ignoreNextSpeech) {
+      speechAccumulator = text;
+    }
   },
   onCommand: (cmd) => {
     speechPreview.classList.add('hidden');
@@ -538,16 +554,53 @@ function toggleSpeech() {
   speechToggleSound.currentTime = 0;
   speechToggleSound.play().catch(() => {});
 
+  // Update tap zone active state
+  tapZones.setZoneActive('speech-toggle', isNowOn);
+
   if (!isNowOn) {
     speechAccumulator = '';
     pendingTextPosition = null;
     speechPinchActive = false;
+    ignoreNextSpeech = false;
     interactionEngine.cancelLiveText(svgRenderer);
   }
 }
 
+function togglePencil() {
+  pencilMode = !pencilMode;
+
+  // Play toggle sound
+  speechToggleSound.currentTime = 0;
+  speechToggleSound.play().catch(() => {});
+
+  // Update tap zone active state
+  tapZones.setZoneActive('pencil-toggle', pencilMode);
+}
+
 const speechToggleBtn = document.getElementById('speechToggle');
-speechToggleBtn.addEventListener('click', toggleSpeech);
+
+// Add ripple effect to button clicks
+function createRipple(e) {
+  const button = e.currentTarget;
+  const ripple = document.createElement('span');
+  const rect = button.getBoundingClientRect();
+  const size = Math.max(rect.width, rect.height);
+  const x = e.clientX - rect.left - size / 2;
+  const y = e.clientY - rect.top - size / 2;
+
+  ripple.className = 'ripple';
+  ripple.style.width = ripple.style.height = `${size}px`;
+  ripple.style.left = `${x}px`;
+  ripple.style.top = `${y}px`;
+
+  button.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 600);
+}
+
+speechToggleBtn.addEventListener('click', (e) => {
+  createRipple(e);
+  toggleSpeech();
+});
 
 // Export buttons
 document.getElementById('exportSVG')?.addEventListener('click', () => {

@@ -71,9 +71,12 @@ export class InteractionEngine {
   }
 
   update(landmarks, canvasWidth, canvasHeight, speechActive) {
+    // Determine grace period based on mode - shorter for speech (more responsive)
+    const effectiveGracePeriod = speechActive ? 2 : this.PINCH_GRACE_PERIOD;
+
     if (!landmarks || landmarks.length === 0) {
       // No hand detected - use grace period if was pinching
-      if (this.wasPinchingInternal && this.pinchGraceFrames < this.PINCH_GRACE_PERIOD) {
+      if (this.wasPinchingInternal && this.pinchGraceFrames < effectiveGracePeriod) {
         this.pinchGraceFrames++;
         return {
           state: this.state,
@@ -124,10 +127,11 @@ export class InteractionEngine {
       this.lastValidPinchPoint = smoothedPos;
     } else if (this.wasPinchingInternal) {
       // Was pinching but now not detected - use grace period
-      if (this.pinchGraceFrames < this.PINCH_GRACE_PERIOD) {
+      // Use shorter grace period during speech for faster response
+      const effectiveGrace = speechActive ? 2 : this.PINCH_GRACE_PERIOD;
+      if (this.pinchGraceFrames < effectiveGrace) {
         this.pinchGraceFrames++;
         isPinching = true; // Maintain pinch during grace period
-        // Keep using last valid position during occlusion
       } else {
         // Grace period expired - actually release
         this.wasPinchingInternal = false;

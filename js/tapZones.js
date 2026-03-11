@@ -13,9 +13,20 @@ export class TapZones {
         width: 80,
         height: 80,
         command: 'TOGGLE_SPEECH',
-        label: '🎤',
-        color: 'rgba(100, 100, 255, 0.7)',
-        hoverColor: 'rgba(100, 100, 255, 0.9)',
+        icon: 'mouth',
+        color: 'slate',
+        hoverColor: 'blue',
+      },
+      {
+        id: 'pencil-toggle',
+        x: canvasWidth - 100,
+        y: canvasHeight - 100,
+        width: 80,
+        height: 80,
+        command: 'TOGGLE_PENCIL',
+        icon: 'pencil',
+        color: 'slate',
+        hoverColor: 'blue',
       }
     ];
 
@@ -28,7 +39,19 @@ export class TapZones {
     this.canvasWidth = width;
     this.canvasHeight = height;
     // Update zone positions
-    this.zones[0].x = width - 100;
+    this.zones[0].x = width - 100; // Speech zone (top right)
+    if (this.zones[1]) {
+      this.zones[1].x = width - 100; // Pencil zone (bottom right)
+      this.zones[1].y = height - 100;
+    }
+  }
+
+  // Update zone active state (for toggle zones)
+  setZoneActive(zoneId, isActive) {
+    const zone = this.zones.find(z => z.id === zoneId);
+    if (zone) {
+      zone.isActive = isActive;
+    }
   }
 
   // Check if finger tip is in any zone
@@ -72,28 +95,104 @@ export class TapZones {
   render(ctx) {
     for (const zone of this.zones) {
       const isHovered = this.hoveredZone === zone.id;
+      const isActive = zone.isActive || false;
+      const centerX = zone.x + zone.width / 2;
+      const centerY = zone.y + zone.height / 2;
 
-      // Draw zone background
-      ctx.fillStyle = isHovered ? zone.hoverColor : zone.color;
-      ctx.fillRect(zone.x, zone.y, zone.width, zone.height);
+      // Draw shadow
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+      ctx.shadowBlur = isHovered ? 20 : 12;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 4;
+
+      // Draw zone background (rounded rect with gradient)
+      const radius = 16;
+      ctx.beginPath();
+      ctx.roundRect(zone.x, zone.y, zone.width, zone.height, radius);
+
+      // Gradient background - green if active, blue if hovered, slate otherwise
+      const gradient = ctx.createLinearGradient(zone.x, zone.y, zone.x, zone.y + zone.height);
+      if (isActive) {
+        gradient.addColorStop(0, 'rgba(34, 197, 94, 0.95)');  // green-500
+        gradient.addColorStop(1, 'rgba(22, 163, 74, 0.95)');  // green-600
+      } else if (isHovered) {
+        gradient.addColorStop(0, 'rgba(59, 130, 246, 0.95)'); // blue-500
+        gradient.addColorStop(1, 'rgba(37, 99, 235, 0.95)');  // blue-600
+      } else {
+        gradient.addColorStop(0, 'rgba(71, 85, 105, 0.9)');   // slate-600
+        gradient.addColorStop(1, 'rgba(51, 65, 85, 0.9)');    // slate-700
+      }
+      ctx.fillStyle = gradient;
+      ctx.fill();
+
+      // Reset shadow
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
 
       // Draw border
-      ctx.strokeStyle = isHovered ? 'white' : 'rgba(255,255,255,0.5)';
-      ctx.lineWidth = isHovered ? 4 : 2;
-      ctx.strokeRect(zone.x, zone.y, zone.width, zone.height);
+      const borderColor = isActive ? 'rgba(134, 239, 172, 0.5)' :
+                         isHovered ? 'rgba(147, 197, 253, 0.5)' :
+                         'rgba(255, 255, 255, 0.2)';
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = 2;
+      ctx.stroke();
 
-      // Draw label
-      ctx.font = 'bold 40px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
+      // Draw icon based on zone type
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.strokeStyle = 'white';
       ctx.fillStyle = 'white';
-      ctx.fillText(zone.label, zone.x + zone.width / 2, zone.y + zone.height / 2);
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
 
-      // Draw helper text below
+      if (zone.icon === 'mouth') {
+        // Simple mouth icon
+        ctx.lineWidth = 4;
+
+        // Open mouth (smile/talking)
+        ctx.beginPath();
+        ctx.arc(0, 0, 12, 0.2, Math.PI - 0.2);
+        ctx.stroke();
+
+        // Upper lip curve
+        ctx.beginPath();
+        ctx.arc(0, -3, 12, 0.2, Math.PI - 0.2, true);
+        ctx.stroke();
+
+      } else if (zone.icon === 'pencil') {
+        // Simple pencil icon
+        ctx.lineWidth = 3;
+
+        // Pencil body (diagonal line)
+        ctx.beginPath();
+        ctx.moveTo(-10, 10);
+        ctx.lineTo(10, -10);
+        ctx.stroke();
+
+        // Pencil tip (small triangle)
+        ctx.beginPath();
+        ctx.moveTo(10, -10);
+        ctx.lineTo(14, -14);
+        ctx.lineTo(8, -12);
+        ctx.closePath();
+        ctx.fill();
+
+        // Eraser (small rectangle at the back)
+        ctx.fillRect(-13, 7, 6, 6);
+      }
+
+      ctx.restore();
+
+      // Draw helper text
       if (isHovered) {
-        ctx.font = 'bold 14px sans-serif';
+        ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
         ctx.fillStyle = 'white';
-        ctx.fillText('TAP!', zone.x + zone.width / 2, zone.y + zone.height + 15);
+        ctx.fillText('TAP TO TOGGLE', centerX, zone.y + zone.height + 8);
       }
     }
   }
