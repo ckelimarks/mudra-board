@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invisible Whiteboard</title>
+  <link rel="stylesheet" href="style.css">
+
+  <!-- MediaPipe via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+  <!-- Hidden video source for MediaPipe -->
+  <video id="inputVideo" autoplay playsinline style="display:none"></video>
+
+  <!-- The single output canvas: video + annotations composited together -->
+  <canvas id="outputCanvas"></canvas>
+
+  <!-- Floating toolbar -->
+  <div id="toolbar">
+    <input type="color" id="colorPicker" value="#FF0000" title="Color">
+    <input type="range" id="brushSize" min="2" max="20" value="5" title="Size">
+    <button id="undoBtn">↩ Undo</button>
+    <button id="clearBtn">🗑 Clear</button>
+    <button id="speechToggle">🎤 Speech: OFF</button>
+    <span id="gestureIndicator" class="indicator">●</span>
+    <span id="speechIndicator" class="indicator hidden">🔴 Listening</span>
+  </div>
+
+  <!-- Interim speech preview -->
+  <div id="speechPreview" class="hidden"></div>
+
+  <!-- Loading overlay -->
+  <div id="loadingOverlay">Loading hand tracking...</div>
+
+  <!-- Instructions overlay (can be dismissed) -->
+  <div id="instructions">
+    <h2>Invisible Whiteboard</h2>
+    <p><strong>Draw:</strong> Point your index finger (others curled)</p>
+    <p><strong>Stop:</strong> Open your palm</p>
+    <p><strong>Place text:</strong> Say "text [your text]"</p>
+    <p><strong>Voice commands:</strong> "clear", "undo"</p>
+    <hr>
+    <p><strong>For Zoom:</strong> Share Screen → Browser Tab → Select this tab</p>
+    <button id="dismissInstructions">Got it</button>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invisible Whiteboard v2</title>
+  <link rel="stylesheet" href="style.css">
+
+  <!-- MediaPipe via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <style>
+    #svgOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    #svgOverlay text {
+      pointer-events: all;
+    }
+  </style>
+</head>
+<body>
+  <!-- Hidden video source for MediaPipe -->
+  <video id="inputVideo" autoplay playsinline style="display:none"></video>
+
+  <!-- Canvas for video background -->
+  <canvas id="outputCanvas"></canvas>
+
+  <!-- SVG overlay for interactive annotations -->
+  <svg id="svgOverlay" xmlns="http://www.w3.org/2000/svg"></svg>
+
+  <!-- Floating toolbar -->
+  <div id="toolbar">
+    <input type="color" id="colorPicker" value="#FF0000" title="Color">
+    <input type="range" id="brushSize" min="2" max="20" value="5" title="Size">
+    <button id="undoBtn">↩ Undo</button>
+    <button id="clearBtn">🗑 Clear</button>
+    <button id="speechToggle">🎤 Speech: OFF</button>
+    <button id="exportSVG">💾 SVG</button>
+    <button id="exportTranscript">📄 Transcript</button>
+    <span id="speechIndicator" class="indicator hidden">🔴 Listening</span>
+  </div>
+
+  <!-- Gesture status removed - using tap zones instead -->
+
+  <!-- Interim speech preview -->
+  <div id="speechPreview" class="hidden"></div>
+
+  <!-- Loading overlay -->
+  <div id="loadingOverlay">Loading hand tracking...</div>
+
+  <!-- Instructions overlay (can be dismissed) -->
+  <div id="instructions">
+    <h2>Invisible Whiteboard v2</h2>
+    <p><strong>Draw:</strong> Pinch thumb + index finger together, move hand</p>
+    <p><strong>Drag text:</strong> Pinch over text, move, release</p>
+    <p><strong>Toggle speech:</strong> Show open palm with your other hand 🖐️</p>
+    <p><strong>Place text:</strong> While speech is on, pinch to place text at position</p>
+    <p><strong>Voice commands:</strong> "clear", "undo"</p>
+    <hr>
+    <p><strong>Export:</strong> Click 💾 SVG to download image, 📄 Transcript for speech log</p>
+    <p><strong>For Zoom:</strong> Share Screen → Browser Tab → Select this tab</p>
+    <button id="dismissInstructions">Got it</button>
+  </div>
+
+  <script type="module" src="js/main-v2.js"></script>
+</body>
+</html>
