@@ -216,9 +216,13 @@ export class InteractionEngine {
   }
 
   handlePinchEnd(svgRenderer, color, width) {
+    console.log('🔧 handlePinchEnd called! State:', this.state, 'Points:', this.currentPoints.length);
+
     if (this.state === 'DRAWING' && this.currentPoints.length > 1) {
+      console.log('🔧 State is DRAWING, checking for shapes...');
       // Try to detect shape
       const shape = this.shapeDetector.detectShape(this.currentPoints);
+      console.log('🔧 Shape detection result:', shape);
 
       if (shape && shape.type === 'circle') {
         // Create perfect circle (no animation for now - debug)
