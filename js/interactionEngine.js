@@ -1,5 +1,7 @@
 import { ShapeDetector } from './shapeDetector.js';
 
+console.log('🔧 interactionEngine.js loaded - VERSION 2.0 - CIRCLE FIX');
+
 // Landmark indices (MediaPipe Hands)
 const LM = {
   WRIST: 0,
