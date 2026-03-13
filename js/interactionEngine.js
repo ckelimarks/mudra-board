@@ -238,6 +238,7 @@ export class InteractionEngine {
           }
 
           // Create perfect circle
+          console.log('🎨 Creating circle at:', shape.center, 'radius:', shape.radius);
           const circle = svgRenderer.createCircle(
             shape.center.x,
             shape.center.y,
@@ -246,6 +247,8 @@ export class InteractionEngine {
             width
           );
 
+          console.log('🎨 Circle created:', circle);
+
           // Animate circle appearance
           if (circle) {
             circle.style.opacity = '0';
@@ -253,6 +256,8 @@ export class InteractionEngine {
             setTimeout(() => {
               circle.style.opacity = '1';
             }, 50);
+          } else {
+            console.error('❌ Circle creation failed!');
           }
         }, 100); // Brief delay to show the rough stroke
 
