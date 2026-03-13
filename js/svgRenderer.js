@@ -177,6 +177,25 @@ export class SVGRenderer {
     return path;
   }
 
+  createCircle(centerX, centerY, radius, color, width) {
+    // Convert screen coordinates to world coordinates
+    const worldCenter = this.screenToWorld(centerX, centerY);
+
+    // Create SVG circle element
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', worldCenter.x);
+    circle.setAttribute('cy', worldCenter.y);
+    circle.setAttribute('r', radius); // Radius doesn't need coordinate transform
+    circle.setAttribute('stroke', color);
+    circle.setAttribute('stroke-width', width);
+    circle.setAttribute('fill', 'none');
+    circle.setAttribute('data-id', `circle-${this.elementIndex++}`);
+    circle.setAttribute('data-shape', 'true'); // Mark as smart shape
+
+    this.strokesGroup.appendChild(circle);
+    return circle;
+  }
+
   createText(content, x, y, color, size) {
     const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     const id = `text-${this.elementIndex++}`;

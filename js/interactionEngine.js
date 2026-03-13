@@ -1,3 +1,5 @@
+import { ShapeDetector } from './shapeDetector.js';
+
 // Landmark indices (MediaPipe Hands)
 const LM = {
   WRIST: 0,
@@ -18,6 +20,7 @@ export class InteractionEngine {
   constructor(svgRenderer) {
     this.svgRenderer = svgRenderer;
     this.state = 'IDLE';  // 'IDLE' | 'DRAWING' | 'DRAGGING' | 'TEXT_PLACING'
+    this.shapeDetector = new ShapeDetector();
     this.positionBuffer = [];
     this.BUFFER_SIZE = 3; // Reduced for faster tracking response
 
@@ -212,8 +215,52 @@ export class InteractionEngine {
 
   handlePinchEnd(svgRenderer, color, width) {
     if (this.state === 'DRAWING' && this.currentPoints.length > 1) {
-      // Finalize stroke as SVG path
-      svgRenderer.createPath(this.currentPoints, color, width);
+      // Try to detect shape
+      const shape = this.shapeDetector.detectShape(this.currentPoints);
+
+      if (shape && shape.type === 'circle') {
+        // Create perfect circle with smooth animation
+        console.log('✨ Circle detected! Confidence:', shape.confidence.toFixed(2));
+
+        // Create the rough stroke first (briefly visible)
+        const roughStroke = svgRenderer.createPath(this.currentPoints, color, width);
+
+        // After a brief delay, replace with perfect circle
+        setTimeout(() => {
+          if (roughStroke) {
+            // Fade out rough stroke
+            roughStroke.style.transition = 'opacity 0.3s ease-out';
+            roughStroke.style.opacity = '0';
+
+            setTimeout(() => {
+              svgRenderer.removeElement(roughStroke);
+            }, 300);
+          }
+
+          // Create perfect circle
+          const circle = svgRenderer.createCircle(
+            shape.center.x,
+            shape.center.y,
+            shape.radius,
+            color,
+            width
+          );
+
+          // Animate circle appearance
+          if (circle) {
+            circle.style.opacity = '0';
+            circle.style.transition = 'opacity 0.3s ease-in';
+            setTimeout(() => {
+              circle.style.opacity = '1';
+            }, 50);
+          }
+        }, 100); // Brief delay to show the rough stroke
+
+      } else {
+        // Not a shape, just create normal stroke
+        svgRenderer.createPath(this.currentPoints, color, width);
+      }
+
       this.currentPoints = [];
     } else if (this.state === 'DRAGGING' && this.grabbedElement) {
       // Release grabbed element
