@@ -12,14 +12,26 @@ export class ShapeDetector {
    * @returns {Object|null} - {center: {x, y}, radius: number} or null
    */
   detectCircle(points) {
-    if (points.length < 10) return null; // Too few points
+    console.log('🔍 Checking if stroke is a circle...', {
+      numPoints: points.length,
+      firstPoint: points[0],
+      lastPoint: points[points.length - 1]
+    });
+
+    if (points.length < 10) {
+      console.log('❌ Too few points:', points.length);
+      return null;
+    }
 
     // 1. Check if shape is closed (start and end points close together)
     const start = points[0];
     const end = points[points.length - 1];
     const closureDistance = this.distance(start, end);
 
+    console.log('📏 Closure distance:', closureDistance, '(threshold:', this.CIRCLE_CLOSURE_THRESHOLD + ')');
+
     if (closureDistance > this.CIRCLE_CLOSURE_THRESHOLD) {
+      console.log('❌ Not closed - distance too large');
       return null; // Not a closed shape
     }
 
@@ -40,16 +52,27 @@ export class ShapeDetector {
 
     const normalizedVariance = variance / avgRadius;
 
+    console.log('📊 Circle metrics:', {
+      avgRadius: avgRadius.toFixed(2),
+      variance: variance.toFixed(2),
+      normalizedVariance: normalizedVariance.toFixed(3),
+      threshold: this.CIRCLE_VARIANCE_THRESHOLD,
+      isCircle: normalizedVariance < this.CIRCLE_VARIANCE_THRESHOLD
+    });
+
     // 5. If variance is low enough, it's a circle!
     if (normalizedVariance < this.CIRCLE_VARIANCE_THRESHOLD) {
-      return {
+      const result = {
         type: 'circle',
         center,
         radius: avgRadius,
         confidence: 1 - normalizedVariance, // Higher confidence = lower variance
       };
+      console.log('✅ CIRCLE DETECTED!', result);
+      return result;
     }
 
+    console.log('❌ Not circular enough - variance too high');
     return null;
   }
 
