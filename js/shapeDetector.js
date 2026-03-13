@@ -2,8 +2,8 @@
 
 export class ShapeDetector {
   constructor() {
-    this.CIRCLE_CLOSURE_THRESHOLD = 50; // pixels
-    this.CIRCLE_VARIANCE_THRESHOLD = 0.15; // 15% radius variance allowed
+    this.CIRCLE_CLOSURE_THRESHOLD = 150; // pixels - forgiving for air drawing
+    this.CIRCLE_VARIANCE_THRESHOLD = 0.20; // 20% radius variance allowed (more forgiving)
   }
 
   /**
