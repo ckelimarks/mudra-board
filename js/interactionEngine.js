@@ -219,47 +219,24 @@ export class InteractionEngine {
       const shape = this.shapeDetector.detectShape(this.currentPoints);
 
       if (shape && shape.type === 'circle') {
-        // Create perfect circle with smooth animation
+        // Create perfect circle (no animation for now - debug)
         console.log('✨ Circle detected! Confidence:', shape.confidence.toFixed(2));
+        console.log('🎨 Creating circle at:', shape.center, 'radius:', shape.radius);
 
-        // Create the rough stroke first (briefly visible)
-        const roughStroke = svgRenderer.createPath(this.currentPoints, color, width);
+        // Create perfect circle directly
+        const circle = svgRenderer.createCircle(
+          shape.center.x,
+          shape.center.y,
+          shape.radius,
+          color,
+          width
+        );
 
-        // After a brief delay, replace with perfect circle
-        setTimeout(() => {
-          if (roughStroke) {
-            // Fade out rough stroke
-            roughStroke.style.transition = 'opacity 0.3s ease-out';
-            roughStroke.style.opacity = '0';
+        console.log('🎨 Circle created:', circle);
 
-            setTimeout(() => {
-              svgRenderer.removeElement(roughStroke);
-            }, 300);
-          }
-
-          // Create perfect circle
-          console.log('🎨 Creating circle at:', shape.center, 'radius:', shape.radius);
-          const circle = svgRenderer.createCircle(
-            shape.center.x,
-            shape.center.y,
-            shape.radius,
-            color,
-            width
-          );
-
-          console.log('🎨 Circle created:', circle);
-
-          // Animate circle appearance
-          if (circle) {
-            circle.style.opacity = '0';
-            circle.style.transition = 'opacity 0.3s ease-in';
-            setTimeout(() => {
-              circle.style.opacity = '1';
-            }, 50);
-          } else {
-            console.error('❌ Circle creation failed!');
-          }
-        }, 100); // Brief delay to show the rough stroke
+        if (!circle) {
+          console.error('❌ Circle creation failed!');
+        }
 
       } else {
         // Not a shape, just create normal stroke
